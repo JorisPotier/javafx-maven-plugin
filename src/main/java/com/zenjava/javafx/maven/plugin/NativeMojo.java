@@ -324,19 +324,15 @@ public class NativeMojo extends AbstractJfxToolsMojo {
             params.putAll(bundleArguments);
 
             Bundlers bundlers = Bundlers.createBundlersInstance(); // service discovery?
+	        bundlers.loadBundler(new WinExeUriSchemedBundler());
+
             boolean foundBundler = false;
             for (Bundler b : bundlers.getBundlers()) {
                 try {
-                    //noinspection deprecation
-                    if (bundleType != null && !"ALL".equalsIgnoreCase(bundleType) && !b.getBundleType().equalsIgnoreCase(bundleType)) {
-                        // not this kind of bundler
-                        continue;
-                    }
-                    if (bundler != null && !"ALL".equalsIgnoreCase(bundler) && !bundler.equalsIgnoreCase(b.getID())){
-                        // this is not the specified bundler
-                        continue;
-                    }
-                    foundBundler = true;
+	                if (skipTemplate(b)) {
+		                continue;
+	                }
+	                foundBundler = true;
 
                     if (b.validate(params)) {
                         b.execute(params, nativeOutputDir);
@@ -354,4 +350,11 @@ public class NativeMojo extends AbstractJfxToolsMojo {
             throw new MojoExecutionException("An error occurred while generating native deployment bundles", e);
         }
     }
+
+	private boolean skipTemplate(Bundler b) {
+		//noinspection deprecation
+		// not this kind of bundler
+		return (bundleType != null && !"ALL".equalsIgnoreCase(bundleType) && !b.getBundleType().equalsIgnoreCase(bundleType)) ||
+				(bundler != null && !"ALL".equalsIgnoreCase(bundler) && !bundler.equalsIgnoreCase(b.getID()));
+	}
 }
