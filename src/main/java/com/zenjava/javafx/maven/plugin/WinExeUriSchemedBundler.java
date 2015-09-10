@@ -11,12 +11,16 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Warning, SystemWide property must be set to true in order to have admin rights which are required to write in the Windows registry.
+ */
 public class WinExeUriSchemedBundler extends WinExeBundler {
 
 	public static final String REGISTRY_HEADER = "[Registry]";
 
 	private static final StandardBundlerParam<String> PROTOCOL_URI_SCHEME;
 	private static final StandardBundlerParam<String> PROTOCOL_URI_NAME;
+	private static final StandardBundlerParam<Boolean> STARTUP_LAUNCH;
 
 	static {
 		PROTOCOL_URI_SCHEME = new StandardBundlerParam<>(
@@ -37,10 +41,19 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 				String.class,
 				StandardBundlerParam.APP_NAME::fetchFrom,
 				(s, p) -> s);
+
+		STARTUP_LAUNCH = new StandardBundlerParam<>(
+				"startupLaunch",
+				"Launch at OS startup",
+				"startupLaunch",
+				Boolean.class,
+				params -> false,
+				(s, p) -> Boolean.valueOf(s));
 	}
 
 	private String protocolUriScheme;
 	private String protocolUriName;
+	private Boolean startupLaunch;
 
 	@Override
 	public String getBundleType() {
@@ -49,14 +62,15 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 
 
 	@Override
-	public boolean validate(Map<String, ? super Object> map) throws UnsupportedPlatformException, ConfigException {
-		final boolean validate = super.validate(map);
+	public boolean validate(Map<String, ? super Object> params) throws UnsupportedPlatformException, ConfigException {
+		final boolean validate = super.validate(params);
 		if (!validate) {
 			return false;
 		}
 
-		protocolUriScheme = PROTOCOL_URI_SCHEME.fetchFrom(map);
-		protocolUriName = PROTOCOL_URI_NAME.fetchFrom(map);
+		protocolUriScheme = PROTOCOL_URI_SCHEME.fetchFrom(params);
+		protocolUriName = PROTOCOL_URI_NAME.fetchFrom(params);
+		startupLaunch = STARTUP_LAUNCH.fetchFrom(params);
 
 		return true;
 	}
@@ -97,7 +111,7 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 	}
 
 	private StringBuilder getProtocolUriRegistryEntries(String runFilename) {
-		return new StringBuilder()
+		final StringBuilder regEntries = new StringBuilder()
 				.append("Root: HKCR; Subkey: \"")
 				.append(protocolUriScheme)
 				.append("\"; ValueType: \"string\"; ValueData: \"URL:")
@@ -114,6 +128,15 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 				.append("\\shell\\open\\command\"; ValueType: \"string\"; ValueData: \"\"\"{app}\\")
 				.append(runFilename)
 				.append(".exe\"\"\"\r\n");
+		if (startupLaunch) {
+			regEntries
+					.append("Root: HKLM; Subkey: \"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"; ValueType: string; ValueName: \"")
+					.append(runFilename)
+					.append("\"; ValueData: \"\"\"{app}\\")
+					.append(runFilename)
+					.append(".exe\"\"\"; Flags: uninsdeletevalue\r\n");
+		}
+		return regEntries;
 	}
 
 	private boolean empty(String s) {
