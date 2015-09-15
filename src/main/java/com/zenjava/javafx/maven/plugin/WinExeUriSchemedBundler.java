@@ -1,3 +1,18 @@
+/*
+ * Copyright 2012 Daniel Zwolenski.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.zenjava.javafx.maven.plugin;
 
 import com.oracle.tools.packager.ConfigException;
@@ -30,7 +45,9 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 				String.class,
 				params -> {
 					String nm = StandardBundlerParam.APP_NAME.fetchFrom(params);
-					if (nm == null) return null;
+					if (nm == null) {
+						return null;
+					}
 					return nm.replaceAll("[^-a-zA-Z\\.0-9]", "");
 				},
 				(s, p) -> s);
@@ -83,19 +100,19 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 		return preprocessUriProtocolRegistryEntries(pairs, textResource);
 	}
 
-	String preprocessUriProtocolRegistryEntries(Map<String, String> pairs, String textResource) {
-
+	String preprocessUriProtocolRegistryEntries(final Map<String, String> pairs, final String textResource) {
 		final String runFilename = pairs.get("RUN_FILENAME");
+		String out = textResource;
 
-		if (!empty(textResource) && !empty(runFilename)) {
-			if (!textResource.contains(REGISTRY_HEADER)) {
-				while (!textResource.endsWith("\r\n\r\n")) {
-					textResource += "\r\n";
+		if (!empty(out) && !empty(runFilename)) {
+			if (!out.contains(REGISTRY_HEADER)) {
+				while (!out.endsWith("\r\n\r\n")) {
+					out += "\r\n";
 				}
-				textResource = textResource + REGISTRY_HEADER + "\r\n" + getProtocolUriRegistryEntries(runFilename);
+				out += REGISTRY_HEADER + "\r\n" + getProtocolUriRegistryEntries(runFilename);
 			} else {
 				Pattern p = Pattern.compile("(.*\\r\\n)*" + Pattern.quote(REGISTRY_HEADER) + "\\r\\n(.+\\r\\n)+");
-				Matcher m = p.matcher(textResource);
+				Matcher m = p.matcher(out);
 				StringBuffer bufStr = new StringBuffer();
 
 				while (m.find()) {
@@ -104,10 +121,10 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 				}
 				m.appendTail(bufStr);
 
-				textResource = bufStr.toString();
+				out = bufStr.toString();
 			}
 		}
-		return textResource;
+		return out;
 	}
 
 	private StringBuilder getProtocolUriRegistryEntries(String runFilename) {
