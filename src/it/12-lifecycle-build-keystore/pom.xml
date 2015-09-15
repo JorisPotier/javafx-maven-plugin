@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.zenjava</groupId>
-    <artifactId>javafx-maven-plugin-test-03-cli-jfx-native</artifactId>
+    <artifactId>javafx-maven-plugin-test-12-lifecycle-build-keystore</artifactId>
     <version>1.0</version>
     <packaging>jar</packaging>
 
@@ -26,11 +26,21 @@
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>@project.version@</version>
                 <configuration>
-                    <mainClass>com.zenjava.test.Main</mainClass>
-                    <bundleArguments>
-                        <runtime />
-                    </bundleArguments>
+                    <certDomain>dynamicfiles.de</certDomain>
+                    <certOrgUnit>DevelopmentSquad</certOrgUnit>
+                    <certOrg>Development</certOrg>
+                    <certState>North Rhine-Westphalia</certState>
+                    <certCountry>DE</certCountry>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>create-keystore</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>build-keystore</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

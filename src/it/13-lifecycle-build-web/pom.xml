@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.zenjava</groupId>
-    <artifactId>javafx-maven-plugin-test-03-cli-jfx-native</artifactId>
+    <artifactId>javafx-maven-plugin-test-13-lifecycle-build-web</artifactId>
     <version>1.0</version>
     <packaging>jar</packaging>
 
@@ -27,10 +27,25 @@
                 <version>@project.version@</version>
                 <configuration>
                     <mainClass>com.zenjava.test.Main</mainClass>
-                    <bundleArguments>
-                        <runtime />
-                    </bundleArguments>
+                    <!-- don't add JRE to native distribution bundle (reduces build-time, but has some risks (see documentation for this) -->
+                    <runtime />
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>create-jfxjar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>build-jar</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>create-web</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>build-web</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
