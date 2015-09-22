@@ -15,6 +15,7 @@
  */
 package com.zenjava.javafx.maven.plugin;
 
+import com.oracle.tools.packager.BundlerParamInfo;
 import com.oracle.tools.packager.ConfigException;
 import com.oracle.tools.packager.StandardBundlerParam;
 import com.oracle.tools.packager.UnsupportedPlatformException;
@@ -22,6 +23,9 @@ import com.oracle.tools.packager.windows.WinExeBundler;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,9 +33,11 @@ import java.util.regex.Pattern;
 /**
  * Warning, SystemWide property must be set to true in order to have admin rights which are required to write in the Windows registry.
  */
-public class WinExeUriSchemedBundler extends WinExeBundler {
+class WinExeUriSchemedBundler extends WinExeBundler {
 
-	public static final String REGISTRY_HEADER = "[Registry]";
+	private static final String RUN_FILENAME_KEY = "RUN_FILENAME";
+	private static final String HEADER_REGISTRY = "[Registry]";
+	private static final String HEADER_TASKS = "[Tasks]";
 
 	private static final StandardBundlerParam<String> PROTOCOL_URI_SCHEME;
 	private static final StandardBundlerParam<String> PROTOCOL_URI_NAME;
@@ -92,6 +98,19 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 		return true;
 	}
 
+	@SuppressWarnings("unchecked")
+	@Override
+	public Collection<BundlerParamInfo<?>> getBundleParameters() {
+		LinkedHashSet results = new LinkedHashSet();
+		results.addAll(super.getBundleParameters());
+		results.addAll(getUriSchemedBundleParameters());
+		return results;
+	}
+
+	private static Collection<BundlerParamInfo<?>> getUriSchemedBundleParameters() {
+		return Arrays.asList(new BundlerParamInfo[]{PROTOCOL_URI_SCHEME, PROTOCOL_URI_NAME, STARTUP_LAUNCH});
+	}
+
 	@Override
 	protected String preprocessTextResource(String publicName, String category,
 	                                        String defaultName, Map<String, String> pairs,
@@ -100,63 +119,68 @@ public class WinExeUriSchemedBundler extends WinExeBundler {
 		return preprocessUriProtocolRegistryEntries(pairs, textResource);
 	}
 
-	String preprocessUriProtocolRegistryEntries(final Map<String, String> pairs, final String textResource) {
-		final String runFilename = pairs.get("RUN_FILENAME");
+	private String preprocessUriProtocolRegistryEntries(Map<String, String> pairs, final String textResource) {
+
+		final String runFilename = pairs.get(RUN_FILENAME_KEY);
 		String out = textResource;
 
-		if (!empty(out) && !empty(runFilename)) {
-			if (!out.contains(REGISTRY_HEADER)) {
-				while (!out.endsWith("\r\n\r\n")) {
-					out += "\r\n";
-				}
-				out += REGISTRY_HEADER + "\r\n" + getProtocolUriRegistryEntries(runFilename);
-			} else {
-				Pattern p = Pattern.compile("(.*\\r\\n)*" + Pattern.quote(REGISTRY_HEADER) + "\\r\\n(.+\\r\\n)+");
-				Matcher m = p.matcher(out);
-				StringBuffer bufStr = new StringBuffer();
-
-				while (m.find()) {
-					String rep = m.group();
-					m.appendReplacement(bufStr, rep + getProtocolUriRegistryEntries(runFilename).toString().replace("\\", "\\\\"));
-				}
-				m.appendTail(bufStr);
-
-				out = bufStr.toString();
+		if (notEmpty(out) && notEmpty(runFilename)) {
+			out = addValuesUnderHeader(out, HEADER_REGISTRY, getProtocolUriRegistryEntries(runFilename));
+			if (startupLaunch) {
+				out = addValuesUnderHeader(out, HEADER_REGISTRY, getRunAtStartupRegistryEntries(runFilename));
+				out = addValuesUnderHeader(out, HEADER_TASKS, getRunAtStartupTask());
 			}
 		}
 		return out;
 	}
 
-	private StringBuilder getProtocolUriRegistryEntries(String runFilename) {
-		final StringBuilder regEntries = new StringBuilder()
-				.append("Root: HKCR; Subkey: \"")
-				.append(protocolUriScheme)
-				.append("\"; ValueType: \"string\"; ValueData: \"URL:")
-				.append(protocolUriName).append(" Protocol\"; Flags: uninsdeletekey\r\n")
-				.append("Root: HKCR; Subkey: \"")
-				.append(protocolUriScheme).append("\"; ValueType: \"string\"; ValueName: \"URL Protocol\"; ValueData: \"\"\r\n")
-				.append("Root: HKCR; Subkey: \"")
-				.append(protocolUriScheme)
-				.append("\\DefaultIcon\"; ValueType: \"string\"; ValueData: \"{app}\\")
-				.append(runFilename)
-				.append(".exe,0\"\r\n")
-				.append("Root: HKCR; Subkey: \"")
-				.append(protocolUriScheme)
-				.append("\\shell\\open\\command\"; ValueType: \"string\"; ValueData: \"\"\"{app}\\")
-				.append(runFilename)
-				.append(".exe\"\"\"\r\n");
-		if (startupLaunch) {
-			regEntries
-					.append("Root: HKLM; Subkey: \"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"; ValueType: string; ValueName: \"")
-					.append(runFilename)
-					.append("\"; ValueData: \"\"\"{app}\\")
-					.append(runFilename)
-					.append(".exe\"\"\"; Flags: uninsdeletevalue\r\n");
+	private String addValuesUnderHeader(final String input, final String header, final String values) {
+		String out = input;
+		final String eol = "\r\n";
+		if (!out.contains(header)) {
+			while (!out.endsWith(eol + eol)) {
+				out += eol;
+			}
+			out += header + eol + values;
+		} else {
+			Pattern p = Pattern.compile("(.*\\r\\n)*" + Pattern.quote(header) + "\\r\\n((.+\\r\\n)*.+(\\r\\n)*?)");
+			Matcher m = p.matcher(out);
+			StringBuffer bufStr = new StringBuffer();
+
+			while (m.find()) {
+				String group = m.group();
+				if (!group.endsWith(eol)) {
+					group += eol;
+				}
+				m.appendReplacement(bufStr, (group + values).replace("\\", "\\\\"));
+			}
+			m.appendTail(bufStr);
+
+			out = bufStr.toString();
 		}
-		return regEntries;
+		return out;
 	}
 
-	private boolean empty(String s) {
-		return s == null || s.length() == 0;
+	private boolean notEmpty(final String s) {
+		return s != null && s.length() != 0;
+	}
+
+	private String getProtocolUriRegistryEntries(final String runFilename) {
+		return String.format(
+				"Root: HKCR; Subkey: \"%s\"; ValueType: \"string\"; ValueData: \"URL:%s Protocol\"; Flags: uninsdeletekey\r\n" +
+						"Root: HKCR; Subkey: \"%s\"; ValueType: \"string\"; ValueName: \"URL Protocol\"; ValueData: \"\"\r\n" +
+						"Root: HKCR; Subkey: \"%s\\DefaultIcon\"; ValueType: \"string\"; ValueData: \"{app}\\%s.exe,0\"\r\n" +
+						"Root: HKCR; Subkey: \"%s\\shell\\open\\command\"; ValueType: \"string\"; ValueData: \"\"\"{app}\\%s.exe\"\"\"\r\n",
+				protocolUriScheme, protocolUriName, protocolUriScheme, protocolUriScheme, runFilename, protocolUriScheme, runFilename);
+	}
+
+	private String getRunAtStartupRegistryEntries(final String runFilename) {
+		return String.format(
+				"Root: HKLM; Subkey: \"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"; ValueType: string; ValueName: \"%s\"; ValueData: \"\"\"{app}\\%s.exe\"\"\"; Flags: uninsdeletevalue; Tasks:StartupLaunchTask;\r\n",
+				runFilename, runFilename);
+	}
+
+	private String getRunAtStartupTask() {
+		return "Name: \"StartupLaunchTask\"; Description: \"Automatically start on login\";";
 	}
 }
