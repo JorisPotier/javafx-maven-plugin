@@ -42,6 +42,7 @@ class WinExeUriSchemedBundler extends WinExeBundler {
 	private static final StandardBundlerParam<String> PROTOCOL_URI_SCHEME;
 	private static final StandardBundlerParam<String> PROTOCOL_URI_NAME;
 	private static final StandardBundlerParam<Boolean> STARTUP_LAUNCH;
+	private static final StandardBundlerParam<Boolean> STARTUP_LAUNCH_USER_LEVEL;
 
 	static {
 		PROTOCOL_URI_SCHEME = new StandardBundlerParam<>(
@@ -72,11 +73,20 @@ class WinExeUriSchemedBundler extends WinExeBundler {
 				Boolean.class,
 				params -> false,
 				(s, p) -> Boolean.valueOf(s));
+
+		STARTUP_LAUNCH_USER_LEVEL = new StandardBundlerParam<>(
+				"startupLaunchUserLevel",
+				"Launch only for this user",
+				"startupLaunchUserLevel",
+				Boolean.class,
+				params -> false,
+				(s, p) -> Boolean.valueOf(s));
 	}
 
 	private String protocolUriScheme;
 	private String protocolUriName;
-	private Boolean startupLaunch;
+	private boolean startupLaunch;
+	private boolean startupLaunchUserLevel;
 
 	@Override
 	public String getBundleType() {
@@ -93,7 +103,13 @@ class WinExeUriSchemedBundler extends WinExeBundler {
 
 		protocolUriScheme = PROTOCOL_URI_SCHEME.fetchFrom(params);
 		protocolUriName = PROTOCOL_URI_NAME.fetchFrom(params);
-		startupLaunch = STARTUP_LAUNCH.fetchFrom(params);
+		startupLaunch = toBoolean(STARTUP_LAUNCH.fetchFrom(params));
+		startupLaunchUserLevel = toBoolean(STARTUP_LAUNCH_USER_LEVEL.fetchFrom(params));
+		if (startupLaunchUserLevel && !startupLaunch) {
+			throw new ConfigException(
+					String.format("Parameter '%s' needs the parameter '%s' to be set", STARTUP_LAUNCH_USER_LEVEL.getID(), STARTUP_LAUNCH.getID()),
+					String.format("Remove '%s' or change the value of '%s'", STARTUP_LAUNCH_USER_LEVEL.getID(), STARTUP_LAUNCH.getID()));
+		}
 
 		return true;
 	}
@@ -108,7 +124,7 @@ class WinExeUriSchemedBundler extends WinExeBundler {
 	}
 
 	private static Collection<BundlerParamInfo<?>> getUriSchemedBundleParameters() {
-		return Arrays.asList(new BundlerParamInfo[]{PROTOCOL_URI_SCHEME, PROTOCOL_URI_NAME, STARTUP_LAUNCH});
+		return Arrays.asList(new BundlerParamInfo[]{PROTOCOL_URI_SCHEME, PROTOCOL_URI_NAME, STARTUP_LAUNCH, STARTUP_LAUNCH_USER_LEVEL});
 	}
 
 	@Override
@@ -127,7 +143,7 @@ class WinExeUriSchemedBundler extends WinExeBundler {
 		if (notEmpty(out) && notEmpty(runFilename)) {
 			out = addValuesUnderHeader(out, HEADER_REGISTRY, getProtocolUriRegistryEntries(runFilename));
 			if (startupLaunch) {
-				out = addValuesUnderHeader(out, HEADER_REGISTRY, getRunAtStartupRegistryEntries(runFilename));
+				out = addValuesUnderHeader(out, HEADER_REGISTRY, getRunAtStartupRegistryEntries(runFilename, startupLaunchUserLevel));
 				out = addValuesUnderHeader(out, HEADER_TASKS, getRunAtStartupTask());
 			}
 		}
@@ -174,13 +190,18 @@ class WinExeUriSchemedBundler extends WinExeBundler {
 				protocolUriScheme, protocolUriName, protocolUriScheme, protocolUriScheme, runFilename, protocolUriScheme, runFilename);
 	}
 
-	private String getRunAtStartupRegistryEntries(final String runFilename) {
-		return String.format(
-				"Root: HKLM; Subkey: \"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"; ValueType: string; ValueName: \"%s\"; ValueData: \"\"\"{app}\\%s.exe\"\"\"; Flags: uninsdeletevalue; Tasks:StartupLaunchTask;\r\n",
-				runFilename, runFilename);
+	private String getRunAtStartupRegistryEntries(final String runFilename, final boolean startupLaunchUserLevel) {
+		final String entry = startupLaunchUserLevel ?
+				"Root: HKCU; Subkey: \"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"; ValueType: string; ValueName: \"%s\"; ValueData: \"\"\"{app}\\%s.exe\"\"\"; Flags: uninsdeletevalue; Tasks:StartupLaunchTask;\r\n" :
+				"Root: HKLM; Subkey: \"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"; ValueType: string; ValueName: \"%s\"; ValueData: \"\"\"{app}\\%s.exe\"\"\"; Flags: uninsdeletevalue; Tasks:StartupLaunchTask;\r\n";
+		return String.format(entry, runFilename, runFilename);
 	}
 
 	private String getRunAtStartupTask() {
 		return "Name: \"StartupLaunchTask\"; Description: \"Automatically start on login\";";
+	}
+
+	public static boolean toBoolean(Boolean bool) {
+		return bool != null && bool;
 	}
 }
